@@ -75,7 +75,7 @@ Zasady szumu:
 
 - Uruchomienia zakończone `skipped` nie są wysyłane.
 - `Issue format`, `PR format`, `Delete merged branch`, `Release notes` i workflow sprzątające podglądy piszą tylko wtedy, gdy się nie udały.
-- Sukces na `main` i `develop` to pełna wiadomość z adresem wdrożenia. Sukces na innej gałęzi i każde anulowanie (np. przez nowszy push) to jedna krótka linia.
+- Sukces na `main` i `develop` to pełna wiadomość z adresem wdrożenia. Sukces na innej gałęzi to jedna krótka linia. Anulowania (np. przez nowszy push do tej samej gałęzi) nie są wysyłane wcale.
 - Błąd, przekroczony czas i "wymaga akcji" to zawsze pełna wiadomość z listą nieudanych jobów.
 - W projekcie pomijane są zmiany kolejności, etykiet i przypisań. Akcje botów na issue i PR (np. automatyczne zamknięcie złego zgłoszenia) też.
 
