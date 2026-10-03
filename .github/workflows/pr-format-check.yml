@@ -1,0 +1,13 @@
+name: PR format
+
+# Checks pull requests of this repo with the shared reusable workflow.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  check:
+    uses: ./.github/workflows/pr-format.yml

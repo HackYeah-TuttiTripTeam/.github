@@ -1,0 +1,74 @@
+# Shared Release Drafter configuration for every TuttiTrip repo.
+# Loaded by .github/workflows/release-notes.yml (config-name: .github:release-drafter.yml).
+#
+# PR titles carry the type (feat/bugfix/docs/chore; bugfix maps to type:bug), the autolabeler mirrors it
+# as a type:* label, and the categories below group the release notes by it.
+# Release PRs (develop -> main, title "release: ...") are left out.
+
+name-template: 'v$RESOLVED_VERSION'
+tag-template: 'v$RESOLVED_VERSION'
+change-template: '- $TITLE (#$NUMBER) $AUTHORS'
+change-title-escapes: '\<*_&'
+no-changes-template: '- Brak zmian'
+template: |
+  $CHANGES
+
+  **Pełna lista zmian:** https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...$RESOLVED_TAG
+
+categories:
+  - type: 'pre-exclude'
+    when:
+      - label: 'release'
+      - conventional:
+          type: 'release'
+  - title: '🚀 Nowe funkcje'
+    semver-increment: 'minor'
+    exclusive: true
+    when:
+      - label: 'type:feat'
+      - conventional:
+          type: 'feat'
+  - title: '🐛 Poprawki'
+    semver-increment: 'patch'
+    exclusive: true
+    when:
+      - label: 'type:bug'
+      - conventional:
+          type: 'bugfix'
+  - title: '📚 Dokumentacja'
+    semver-increment: 'patch'
+    exclusive: true
+    when:
+      - label: 'type:docs'
+      - conventional:
+          type: 'docs'
+  - title: '🧹 Porządki'
+    semver-increment: 'patch'
+    exclusive: true
+    when:
+      - label: 'type:chore'
+      - conventional:
+          type: 'chore'
+  - title: 'Inne zmiany'
+    semver-increment: 'patch'
+  - type: 'version-resolver'
+    semver-increment: 'patch'
+
+sync-labels: true
+autolabeler:
+  - labels: ['release']
+    stop-on-match: true
+    title:
+      - '/^release(\([a-z0-9-]+\))?:/'
+  - labels: ['type:feat']
+    title:
+      - '/^feat(\([a-z0-9-]+\))?:/'
+  - labels: ['type:bug']
+    title:
+      - '/^bugfix(\([a-z0-9-]+\))?:/'
+  - labels: ['type:docs']
+    title:
+      - '/^docs(\([a-z0-9-]+\))?:/'
+  - labels: ['type:chore']
+    title:
+      - '/^chore(\([a-z0-9-]+\))?:/'

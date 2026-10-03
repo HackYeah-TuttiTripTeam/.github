@@ -1,0 +1,200 @@
+name: PR format
+
+# Reusable check of pull request titles and descriptions for every TuttiTrip
+# repo. Each repo calls it from .github/workflows/pr-format.yml on
+# pull_request: [opened, edited, synchronize, reopened, ready_for_review].
+#
+# Security: runs on pull_request (never pull_request_target), on a
+# GitHub-hosted runner, checks out no code and reads the title and body only
+# through the API inside github-script (never interpolated into a shell).
+#
+# A red check does not block merging on the free plan (no branch protection).
+
+on:
+  workflow_call:
+
+permissions:
+  pull-requests: write
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+    concurrency:
+      group: pr-format-${{ github.repository }}-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const MARKER = '<!-- tuttitrip-pr-format -->';
+            const RULES_URL = 'https://github.com/HackYeah-TuttiTripTeam/.github/blob/main/CONTRIBUTING.md';
+            const TITLE_RE = /^(feat|docs|chore|bugfix)(\([a-z0-9-]+\))?: \S.{3,}/;
+            const RELEASE_RE = /^release(\([a-z0-9-]+\))?: \S.{3,}/;
+            const REQUIRED = ['Co i dlaczego', 'Powiązane issue', 'Lista zmian', 'Jak przetestować'];
+
+            // Lowercase, drop Polish diacritics and punctuation.
+            const norm = (s) => s.toLowerCase().replace(/ł/g, 'l')
+              .normalize('NFD').replace(/[̀-ͯ]/g, '')
+              .replace(/[^a-z0-9]+/g, ' ').trim();
+
+            // "## Heading" or "### Heading" outside code fences.
+            function parseSections(body) {
+              const sections = [];
+              let current = null;
+              let fence = false;
+              for (const line of body.replace(/\r\n?/g, '\n').split('\n')) {
+                if (/^\s{0,3}(```|~~~)/.test(line)) fence = !fence;
+                const h = fence ? null : /^\s{0,3}#{2,3}\s+(.*?)\s*#*\s*$/.exec(line);
+                if (h) {
+                  current = { heading: norm(h[1]), lines: [] };
+                  sections.push(current);
+                } else if (current) {
+                  current.lines.push(line);
+                }
+              }
+              return sections;
+            }
+
+            const stripComments = (lines) => lines.join('\n').replace(/<!--[\s\S]*?-->/g, '');
+
+            // Empty = nothing but comments, "...", "TODO", "<placeholder>",
+            // bare "- " / "- [ ]" or "Label:" lines.
+            function isEmpty(lines) {
+              return stripComments(lines).split('\n').every((raw) => {
+                const l = raw.trim()
+                  .replace(/^([-*+]|\d+[.)])\s*/, '')
+                  .replace(/^\[[ xX]?\]\s*/, '')
+                  .trim();
+                return l === ''
+                  || /^_?no response_?$/i.test(l)
+                  || /^(\.\.\.|…|todo|tbd|-|\*)$/i.test(l)
+                  || /^<[^>]*>$/.test(l)
+                  || /^[^:]{1,40}:$/.test(l)
+                  || !/[\p{L}\p{N}]/u.test(l);
+              });
+            }
+
+            function findSection(sections, name) {
+              const n = norm(name);
+              const hits = sections.filter((s) => s.heading === n || s.heading.startsWith(n + ' '));
+              return hits.length === 0 ? null : hits.flatMap((s) => s.lines);
+            }
+
+            const { owner, repo } = context.repo;
+            const number = context.payload.pull_request.number;
+            if (context.payload.pull_request.user?.type === 'Bot') {
+              core.info('Pull request opened by a bot, skipping.');
+              return;
+            }
+            const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: number });
+            if (pr.draft) {
+              core.notice('Draft pull request: the format is checked once it is ready for review.');
+              return;
+            }
+            const title = pr.title || '';
+            const body = pr.body || '';
+            const isReleasePr = pr.base.ref === 'main' && pr.head.ref === 'develop'
+              && pr.head.repo?.full_name === pr.base.repo.full_name;
+
+            const problems = [];
+            const safeTitle = title.replace(/`/g, "'");
+            let kind = null;
+            if (isReleasePr) {
+              if (!RELEASE_RE.test(title)) {
+                problems.push(`To PR wydania (\`develop\` do \`main\`), więc tytuł musi mieć format \`release: opis\`, np. \`release: Logowanie i podglądy gałęzi\`. Obecny tytuł: \`${safeTitle}\`.`);
+              }
+            } else {
+              const match = TITLE_RE.exec(title);
+              if (match) {
+                kind = match[1];
+              } else if (RELEASE_RE.test(title)) {
+                problems.push('Prefiks `release:` jest zarezerwowany dla PR wydania z `develop` do `main`. Użyj `feat:`, `docs:`, `chore:` albo `bugfix:`.');
+              } else if (/^bug(\([a-z0-9-]+\))?:/.test(title)) {
+                const fixed = title.replace(/^bug/, 'bugfix').replace(/`/g, "'");
+                problems.push(`W tytule PR poprawka ma prefiks \`bugfix:\`, a nie \`bug:\` (\`bug:\` jest tylko dla zgłoszeń). Zmień tytuł na \`${fixed}\`.`);
+              } else {
+                let hint = '';
+                if (!/^\s*\W*(feat|docs|chore|bugfix|bug)\b/i.test(title)) hint = ' Brakuje prefiksu typu.';
+                else if (!/^(feat|docs|chore|bugfix)/.test(title)) hint = ' Prefiks musi być na początku i małymi literami.';
+                else if (!/^[a-z]+(\([a-z0-9-]+\))?: /.test(title)) hint = ' Po prefiksie (i opcjonalnym zakresie w nawiasie, np. `(frontend)`) musi być dwukropek i spacja.';
+                else hint = ' Po prefiksie brakuje opisu (minimum 4 znaki).';
+                problems.push(`Tytuł \`${safeTitle}\` nie ma formatu \`typ: opis\` ani \`typ(zakres): opis\`, gdzie typ to \`feat\`, \`docs\`, \`chore\` albo \`bugfix\`.${hint}`);
+              }
+
+              // Description sections (not required for release PRs: their
+              // notes come from the release draft).
+              const sections = parseSections(body);
+              for (const name of REQUIRED) {
+                const content = findSection(sections, name);
+                if (content === null) {
+                  problems.push(`Brak sekcji \`## ${name}\`.`);
+                } else if (name === 'Powiązane issue') {
+                  const text = stripComments(content);
+                  const linked = /#\d+\b|\/issues\/\d+\b/.test(text);
+                  const looseKind = kind || (/^\s*\W*(feat|docs|chore|bugfix|bug)\b/i.exec(title)?.[1] || '').toLowerCase();
+                  if (['feat', 'bugfix', 'bug'].includes(looseKind) && !linked) {
+                    problems.push('Sekcja `## Powiązane issue` musi wskazywać zgłoszenie, np. `Closes #12` albo `Refs #12` (wymagane dla `feat` i `bugfix`).');
+                  } else if (!linked && isEmpty(content)) {
+                    problems.push('Sekcja `## Powiązane issue` jest pusta. Podaj `Closes #12` / `Refs #12` albo wpisz `brak` (dozwolone dla `docs` i `chore`).');
+                  }
+                } else if (isEmpty(content)) {
+                  problems.push(`Sekcja \`## ${name}\` jest pusta (albo zawiera tylko komentarze z szablonu).`);
+                }
+              }
+            }
+
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: number, per_page: 100 });
+            const mine = comments.find((c) => c.user?.type === 'Bot' && c.body?.includes(MARKER));
+            async function upsertComment(text) {
+              const bodyText = `${MARKER}\n${text}`;
+              try {
+                if (mine) await github.rest.issues.updateComment({ owner, repo, comment_id: mine.id, body: bodyText });
+                else await github.rest.issues.createComment({ owner, repo, issue_number: number, body: bodyText });
+              } catch (e) {
+                // Pull requests from forks get a read-only token.
+                core.warning(`Could not write the comment: ${e.message}`);
+              }
+            }
+
+            if (problems.length > 0) {
+              await upsertComment([
+                '### PR nie spełnia formatu',
+                '',
+                'Popraw tytuł albo opis PR. Check uruchomi się ponownie po zapisaniu zmian.',
+                '',
+                '**Co trzeba poprawić:**',
+                '',
+                ...problems.map((p) => `- ${p}`),
+                '',
+                '**Przykład:**',
+                '',
+                '````markdown',
+                'Tytuł: feat(frontend): Filtrowanie wyjazdów po dacie',
+                '',
+                '## Co i dlaczego',
+                'Lista wyjazdów ma filtr zakresu dat, bo organizator z wieloma wyjazdami nie mógł znaleźć bieżącego.',
+                '',
+                '## Powiązane issue',
+                'Closes #12',
+                '',
+                '## Lista zmian',
+                '- Filtr dat w nagłówku listy',
+                '- Parametry `from` i `to` w URL',
+                '',
+                '## Jak przetestować',
+                '1. Otwórz podgląd z komentarza bota',
+                '2. Wybierz zakres dat i sprawdź listę',
+                '````',
+                '',
+                `Szablon opisu pojawia się przy tworzeniu PR w przeglądarce. Zasady: [CONTRIBUTING.md](${RULES_URL}).`,
+              ].join('\n'));
+              core.setFailed(`PR format: ${problems.length} problem(s):\n- ${problems.join('\n- ')}`);
+              return;
+            }
+
+            core.info(`PR #${number} format OK${isReleasePr ? ' (release)' : ` (${kind})`}.`);
+            if (mine) await upsertComment('### Format OK\n\nTytuł i opis PR spełniają zasady.');
