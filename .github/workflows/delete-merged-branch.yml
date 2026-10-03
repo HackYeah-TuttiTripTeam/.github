@@ -1,0 +1,92 @@
+name: Delete merged branch
+
+# Reusable replacement for GitHub's "Automatically delete head branches",
+# which also deletes `develop` after a release PR (develop -> main) because the
+# free plan has no branch protection. Each repo calls it from
+# .github/workflows/delete-merged-branch.yml on pull_request: [closed]; the
+# caller must be on both `main` and `develop` (a closed PR runs the workflow
+# from its base branch).
+#
+# After a merge it deletes the PR's head branch when:
+# - the PR was merged (closed without merge: the branch stays),
+# - the branch is in this repository (forks are left alone),
+# - it is not `main` or `develop` (release PRs go straight from `develop`),
+# - no open PR uses it as its base (deleting it would close those PRs).
+# Short-lived `release/*` branches are deleted like any other merged branch.
+#
+# A branch deleted with GITHUB_TOKEN does not fire the `delete` event, so the
+# repo's preview cleanup would not run. Pass its workflow file as
+# `cleanup-workflow` and it is started with workflow_dispatch instead.
+#
+# Caller permissions: contents: write and pull-requests: read, plus
+# actions: write when `cleanup-workflow` is set.
+#
+# Security: runs on pull_request (never pull_request_target), on a
+# GitHub-hosted runner, checks out no code and reads the branch name only from
+# context.payload inside github-script (never interpolated into a shell).
+
+on:
+  workflow_call:
+    inputs:
+      cleanup-workflow:
+        description: Workflow file to dispatch after the branch is deleted (e.g. cleanup.yml).
+        type: string
+        required: false
+        default: ''
+
+jobs:
+  delete:
+    name: delete
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          CLEANUP_WORKFLOW: ${{ inputs.cleanup-workflow }}
+        with:
+          script: |
+            const KEEP = ['main', 'develop'];
+            const { owner, repo } = context.repo;
+            const pr = context.payload.pull_request;
+            const branch = pr.head.ref;
+            const repository = context.payload.repository;
+
+            if (!pr.merged) {
+              core.info(`PR #${pr.number} was closed without a merge, keeping ${branch}.`);
+              return;
+            }
+            if (pr.head.repo?.full_name !== `${owner}/${repo}`) {
+              core.info(`Head branch of PR #${pr.number} is in a fork, nothing to delete.`);
+              return;
+            }
+            if (KEEP.includes(branch) || branch === repository?.default_branch) {
+              core.info(`${branch} is a long-lived branch, keeping it.`);
+              return;
+            }
+            const dependents = await github.paginate(github.rest.pulls.list, { owner, repo, state: 'open', base: branch, per_page: 100 });
+            if (dependents.length > 0) {
+              core.notice(`Keeping ${branch}: open PRs use it as their base (${dependents.map((p) => '#' + p.number).join(', ')}). Delete it by hand once they are merged or retargeted.`);
+              return;
+            }
+
+            try {
+              await github.rest.git.deleteRef({ owner, repo, ref: `heads/${branch}` });
+              core.info(`Deleted ${branch} (merged in PR #${pr.number}).`);
+            } catch (e) {
+              if (e.status === 404 || e.status === 422) {
+                core.info(`${branch} is already gone (${e.status}).`);
+              } else {
+                throw e;
+              }
+            }
+
+            const cleanup = process.env.CLEANUP_WORKFLOW;
+            if (cleanup) {
+              try {
+                await github.rest.actions.createWorkflowDispatch({ owner, repo, workflow_id: cleanup, ref: repository.default_branch });
+                core.info(`Started ${cleanup} on ${repository.default_branch} to remove the branch's deployments.`);
+              } catch (e) {
+                core.warning(`Could not start ${cleanup}: ${e.message}. Its next scheduled run (every deploy) will clean up.`);
+              }
+            }
