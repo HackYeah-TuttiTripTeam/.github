@@ -1,0 +1,237 @@
+name: Discord notify
+
+# Reusable: posts the result of a finished workflow run to the team's Discord
+# channel as an embed. Each repo calls it from .github/workflows/discord-notify.yml
+# on workflow_run: [completed], listing all its other workflows by name. GitHub
+# runs workflow_run only from the copy on the default branch (`main`).
+#
+# Noise rules (also in CONTRIBUTING.md, "Powiadomienia (Discord)"):
+# - `skipped` runs are never posted (the job does not even start),
+# - workflows in `quiet-on-success` (format checks, branch deletion, release
+#   notes, cleanups) are posted only when they do not succeed,
+# - success on `main` / `develop`: full embed, with the deployment URL,
+# - success on any other branch and every `cancelled` run: one compact embed,
+# - failure, timeout, startup failure, action required: full embed plus the
+#   failed jobs.
+#
+# Security: GitHub-hosted runner, no checkout, no shell. Event fields (titles,
+# branch names) are read from context.payload inside github-script and escaped
+# for Discord markdown; mentions are disabled. The webhook URL comes only from
+# the DISCORD_WEBHOOK_URL secret, which the caller passes explicitly, and it is
+# never logged.
+#
+# Caller permissions: actions: read (job list), contents: read and
+# pull-requests: read (title of the PR behind a run).
+
+on:
+  workflow_call:
+    inputs:
+      quiet-on-success:
+        description: JSON array of workflow names whose successful runs are not posted.
+        type: string
+        required: false
+        default: '[]'
+      deploy-workflow:
+        description: Name of the workflow that deploys. Its URL is shown when its deploy job succeeded.
+        type: string
+        required: false
+        default: ''
+      deploy-job:
+        description: Name of the deploy job inside deploy-workflow.
+        type: string
+        required: false
+        default: deploy
+      deploy-urls:
+        description: >-
+          Lines "key: url". Keys: main / develop (push to that branch), push /
+          pull_request (any other branch on that event). {slug:N} in the URL is
+          the branch slug (lowercase, runs of other chars than a-z0-9 become "-",
+          trimmed, at most N chars).
+        type: string
+        required: false
+        default: ''
+    secrets:
+      DISCORD_WEBHOOK_URL:
+        required: false
+
+jobs:
+  notify:
+    name: notify
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion != 'skipped' &&
+      !(github.event.workflow_run.conclusion == 'success' &&
+        contains(fromJSON(inputs.quiet-on-success), github.event.workflow_run.name))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          QUIET_ON_SUCCESS: ${{ inputs.quiet-on-success }}
+          DEPLOY_WORKFLOW: ${{ inputs.deploy-workflow }}
+          DEPLOY_JOB: ${{ inputs.deploy-job }}
+          DEPLOY_URLS: ${{ inputs.deploy-urls }}
+        with:
+          script: |
+            const webhook = process.env.DISCORD_WEBHOOK_URL;
+            if (!webhook) {
+              core.warning('Secret DISCORD_WEBHOOK_URL is not set in this repository, nothing posted.');
+              return;
+            }
+
+            const run = context.payload.workflow_run;
+            const repository = context.payload.repository;
+            const { owner, repo } = context.repo;
+            const conclusion = run.conclusion || 'unknown';
+            const quiet = JSON.parse(process.env.QUIET_ON_SUCCESS || '[]');
+            if (conclusion === 'skipped' || (conclusion === 'success' && quiet.includes(run.name))) {
+              core.info(`Not posted: ${run.name} ended ${conclusion} (noise rules).`);
+              return;
+            }
+
+            const STATUS = {
+              success: ['✅ Sukces', 0x2ecc71],
+              failure: ['❌ Błąd', 0xe74c3c],
+              timed_out: ['⏱️ Przekroczony czas', 0xe74c3c],
+              startup_failure: ['❌ Błąd uruchomienia', 0xe74c3c],
+              action_required: ['⚠️ Wymaga akcji', 0xf1c40f],
+              cancelled: ['⏹️ Anulowano', 0x95a5a6],
+              skipped: ['⏭️ Pominięto', 0x95a5a6],
+              neutral: ['⚪ Neutralny', 0x95a5a6],
+              stale: ['⚪ Nieaktualny', 0x95a5a6],
+            };
+            const [label, color] = STATUS[conclusion] ?? [`❔ ${conclusion}`, 0x95a5a6];
+            const EVENTS = {
+              push: 'push',
+              pull_request: 'pull request',
+              workflow_dispatch: 'ręczne uruchomienie',
+              issues: 'zgłoszenie',
+              delete: 'usunięcie gałęzi',
+              schedule: 'harmonogram',
+              release: 'wydanie',
+            };
+
+            // Untrusted text (titles, branch names): one line, cut to `max`,
+            // Discord markdown escaped so it cannot add links or formatting.
+            const esc = (value, max = 200) => {
+              let s = String(value ?? '').replace(/\s+/g, ' ').trim();
+              if (s.length > max) s = `${s.slice(0, max - 1)}…`;
+              return s.replace(/([\\`*_~|>\[\]()<#])/g, '\\$1');
+            };
+            const cut = (s, max) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
+            const slugify = (branch, max = 63) =>
+              branch.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+                .slice(0, max).replace(/-$/, '');
+
+            const branch = run.head_branch || '';
+            const persistent = branch === 'main' || branch === 'develop';
+            const bad = ['failure', 'timed_out', 'startup_failure', 'action_required'].includes(conclusion);
+            const compact = !bad && (conclusion !== 'success' || !persistent);
+
+            // Pull request behind the run: listed on the run, or the PR whose
+            // squash/merge commit was pushed.
+            let pr = null;
+            try {
+              const number = run.pull_requests?.[0]?.number;
+              if (number) {
+                pr = (await github.rest.pulls.get({ owner, repo, pull_number: number })).data;
+              } else if (run.event === 'push' && run.head_sha) {
+                const { data } = await github.rest.repos.listPullRequestsAssociatedWithCommit({ owner, repo, commit_sha: run.head_sha });
+                pr = data.find((p) => p.merge_commit_sha === run.head_sha) ?? null;
+              }
+            } catch (e) {
+              core.info(`PR lookup skipped: ${e.message}`);
+            }
+            let prText = null;
+            if (pr) prText = `[#${pr.number}](${pr.html_url}) ${esc(pr.title, 150)}`;
+            else if (run.event === 'pull_request' && run.display_title) prText = esc(run.display_title, 150);
+
+            let jobs = [];
+            try {
+              jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+                owner, repo, run_id: run.id, filter: 'latest', per_page: 100,
+              });
+            } catch (e) {
+              core.info(`Job list skipped: ${e.message}`);
+            }
+
+            // Deployment URL: only when the deploy job of the deploy workflow succeeded.
+            let deployUrl = null;
+            const deployJob = process.env.DEPLOY_JOB || 'deploy';
+            if (conclusion === 'success' && run.name === process.env.DEPLOY_WORKFLOW
+                && jobs.some((j) => j.name === deployJob && j.conclusion === 'success')) {
+              const urls = {};
+              for (const line of (process.env.DEPLOY_URLS || '').split('\n')) {
+                const m = /^\s*([a-z_]+)\s*:\s*(\S+)\s*$/.exec(line);
+                if (m) urls[m[1]] = m[2];
+              }
+              const key = persistent && run.event === 'push' ? branch : run.event;
+              if (urls[key] && !(persistent && key !== branch)) {
+                deployUrl = urls[key].replace(/\{slug(?::(\d+))?\}/g, (_, n) => slugify(branch, n ? Number(n) : 63));
+              }
+            }
+
+            const actor = run.triggering_actor?.login || run.actor?.login || context.actor;
+            const actorText = `[${esc(actor, 60)}](https://github.com/${encodeURIComponent(actor)})`;
+            const event = EVENTS[run.event] ?? run.event;
+            const repoText = `[${esc(repository.name)}](${repository.html_url})`;
+            const attempt = run.run_attempt > 1 ? ` (próba ${run.run_attempt})` : '';
+            const embed = {
+              title: cut(`${label} · ${run.name}`, 256),
+              url: run.html_url,
+              color,
+              timestamp: run.updated_at,
+            };
+
+            if (compact) {
+              embed.description = cut([
+                [repoText, esc(branch, 100), event, actorText, `[#${run.run_number}](${run.html_url})${attempt}`].join(' · '),
+                prText && `PR ${prText}`,
+                deployUrl && `🌐 ${deployUrl}`,
+              ].filter(Boolean).join('\n'), 4000);
+            } else {
+              const sha = (run.head_sha || '').slice(0, 7);
+              const commit = (run.head_commit?.message || '').split('\n')[0];
+              const failed = jobs.filter((j) => ['failure', 'timed_out', 'startup_failure'].includes(j.conclusion));
+              const fields = [
+                ['Repozytorium', repoText, true],
+                ['Workflow', `[${esc(run.name, 100)}](${run.html_url})`, true],
+                ['Gałąź', esc(branch, 100) || '—', true],
+                ['Zdarzenie', event, true],
+                ['Autor', actorText, true],
+                ['Uruchomienie', `[#${run.run_number}](${run.html_url})${attempt}`, true],
+                prText && ['Pull request', prText, false],
+                deployUrl && ['Wdrożenie', deployUrl, false],
+                failed.length > 0 && ['Nieudane joby', failed.slice(0, 10).map((j) => `[${esc(j.name, 80)}](${j.html_url})`).join('\n'), false],
+                sha && ['Commit', `[${sha}](${repository.html_url}/commit/${run.head_sha}) ${esc(commit, 120)}`, false],
+              ].filter(Boolean);
+              embed.author = { name: repository.full_name, url: repository.html_url };
+              embed.fields = fields.map(([name, value, inline]) => ({ name, value: cut(value, 1024), inline }));
+              embed.footer = { text: 'GitHub Actions' };
+            }
+
+            const body = JSON.stringify({
+              username: 'TuttiTrip CI',
+              embeds: [embed],
+              allowed_mentions: { parse: [] },
+            });
+            const post = () => fetch(webhook, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+            let res;
+            try {
+              res = await post();
+              if (res.status === 429) {
+                const wait = Math.min(Number((await res.json()).retry_after ?? 2), 10);
+                await new Promise((r) => setTimeout(r, wait * 1000));
+                res = await post();
+              }
+            } catch (e) {
+              core.setFailed(`Discord request failed (${e.name}).`);
+              return;
+            }
+            core.info(`Discord HTTP ${res.status} for ${run.name} #${run.run_number} (${conclusion}${compact ? ', compact' : ''}).`);
+            if (!res.ok) core.setFailed(`Discord answered HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
