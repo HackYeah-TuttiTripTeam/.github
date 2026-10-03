@@ -10,7 +10,9 @@ name: Discord notify
 # - workflows in `quiet-on-success` (format checks, branch deletion, release
 #   notes, cleanups) are posted only when they do not succeed,
 # - success on `main` / `develop`: full embed, with the deployment URL,
-# - success on any other branch and every `cancelled` run: one compact embed,
+# - `cancelled` runs are never posted: concurrency groups cancel superseded runs
+#   on every push, and each cancellation would be a message with no news,
+# - success on any other branch: one compact embed,
 # - failure, timeout, startup failure, action required: full embed plus the
 #   failed jobs.
 #
@@ -60,6 +62,7 @@ jobs:
     if: >-
       github.event_name == 'workflow_run' &&
       github.event.workflow_run.conclusion != 'skipped' &&
+      github.event.workflow_run.conclusion != 'cancelled' &&
       !(github.event.workflow_run.conclusion == 'success' &&
         contains(fromJSON(inputs.quiet-on-success), github.event.workflow_run.name))
     runs-on: ubuntu-latest
@@ -89,7 +92,7 @@ jobs:
             const { owner, repo } = context.repo;
             const conclusion = run.conclusion || 'unknown';
             const quiet = JSON.parse(process.env.QUIET_ON_SUCCESS || '[]');
-            if (conclusion === 'skipped' || (conclusion === 'success' && quiet.includes(run.name))) {
+            if (conclusion === 'skipped' || conclusion === 'cancelled' || (conclusion === 'success' && quiet.includes(run.name))) {
               core.info(`Not posted: ${run.name} ended ${conclusion} (noise rules).`);
               return;
             }
