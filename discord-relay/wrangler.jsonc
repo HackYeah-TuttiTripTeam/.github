@@ -24,6 +24,5 @@
     // Also post opened/closed/merged issues and PRs (needs those events on the org webhook).
     "FORWARD_ISSUES_PRS": "true"
   }
-  // Secrets (wrangler secret put): DISCORD_WEBHOOK_URL, GITHUB_WEBHOOK_SECRET,
-  // optional GITHUB_TOKEN (fine-grained PAT, read-only, for item titles).
+  // Secrets (wrangler secret put): DISCORD_WEBHOOK_URL, GITHUB_WEBHOOK_SECRET.
 }

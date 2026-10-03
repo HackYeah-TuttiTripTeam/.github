@@ -35,20 +35,12 @@ treści `{"posted": true, "discord": 204}` albo powód pominięcia, więc w
 | --- | --- |
 | `DISCORD_WEBHOOK_URL` | URL webhooka kanału Discord (ten sam co w sekretach repozytoriów) |
 | `GITHUB_WEBHOOK_SECRET` | losowy sekret, ten sam w ustawieniach webhooka organizacji |
-| `GITHUB_TOKEN` (opcjonalny) | fine-grained PAT tylko do odczytu, opis niżej |
 
-Bez `GITHUB_TOKEN` wiadomość ma typ elementu i link do niego w projekcie, ale
-bez tytułu. Z tokenem Worker pobiera z GraphQL tytuł, numer, repozytorium i
-bieżący Status. Token: GitHub, Settings, Developer settings, Fine-grained
-tokens, Generate new token. Resource owner `HackYeah-TuttiTripTeam`,
-Repository access "All repositories", uprawnienia repozytorium Issues: Read,
-Pull requests: Read (Metadata: Read dochodzi samo), uprawnienia organizacji
-Projects: Read. Potem:
-
-```bash
-cd discord-relay
-npx wrangler@4.147.0 secret put GITHUB_TOKEN   # wklej token w prompt
-```
+Worker nie używa tokenu GitHub. Zdarzenie elementu projektu nie zawiera
+tytułu, więc wiadomość podaje typ (Issue, Pull request, Szkic), kto zmienił,
+starą i nową wartość pola oraz link do elementu w projekcie. Nowe issue trafiają
+do projektu przez formularze zgłoszeń (`projects:`) i wbudowany auto-add, nie
+przez ten Worker.
 
 ## Wdrożenie
 

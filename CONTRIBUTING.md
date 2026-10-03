@@ -83,7 +83,7 @@ Konfiguracja:
 
 - Lista obserwowanych workflow jest w `discord-notify.yml` każdego repozytorium (`workflows:`). Nowy workflow trzeba tam dopisać po nazwie (pole `name:`), na `main` i `develop`. `workflow_run` działa tylko z kopii na `main`.
 - Webhook Discorda to sekret repozytorium `DISCORD_WEBHOOK_URL` w każdym z czterech repozytoriów. Sekret organizacji nie wystarczy: na darmowym planie nie widzą go repozytoria prywatne.
-- Worker: `discord-relay/wrangler.jsonc` (projekt, pola, przekazywanie issue i PR), sekrety `DISCORD_WEBHOOK_URL`, `GITHUB_WEBHOOK_SECRET` i opcjonalny `GITHUB_TOKEN`. Webhook organizacji wskazuje na `https://tuttitrip-hooks.gburek.app/github`.
+- Worker: `discord-relay/wrangler.jsonc` (projekt, pola, przekazywanie issue i PR), sekrety `DISCORD_WEBHOOK_URL` i `GITHUB_WEBHOOK_SECRET` (bez tokenu GitHub, więc wiadomość o elemencie projektu ma link zamiast tytułu). Webhook organizacji wskazuje na `https://tuttitrip-hooks.gburek.app/github`.
 
 Zmiana (rotacja) webhooka Discorda: utwórz nowy webhook w ustawieniach kanału i usuń stary, potem z pliku z nowym URL-em:
 

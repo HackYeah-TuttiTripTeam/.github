@@ -67,10 +67,10 @@ function message(embed) {
 }
 
 /**
- * projects_v2_item -> Discord message, or { skip: reason }.
- * `info` (optional, from GraphQL): { title, url, number, repo, state, status }.
+ * projects_v2_item -> Discord message, or { skip: reason }. The payload has no
+ * item title (that would need a GitHub token), so the message links to the item.
  */
-export function projectItemMessage(payload, env, info = {}) {
+export function projectItemMessage(payload, env) {
   const item = payload.projects_v2_item
   const action = payload.action
   const projectUrl = env.PROJECT_URL
@@ -123,21 +123,15 @@ export function projectItemMessage(payload, env, info = {}) {
       return { skip: `action ${action} not posted` } // reordered
   }
 
-  const title = info.title
-    ? plain(info.number ? `#${info.number} ${info.title}` : info.title)
-    : `${kind} (element ${item.id})`
   const fields = [
     { name: 'Typ', value: kind, inline: true },
-    info.repo && { name: 'Repozytorium', value: esc(info.repo, 100), inline: true },
     { name: 'Kto', value: userLink(payload.sender), inline: true },
-    info.status &&
-      !description.includes('**Status**') && { name: 'Status', value: esc(info.status, 100), inline: true },
-  ].filter(Boolean)
+  ]
 
   return message({
     author: { name: 'Projekt TuttiTrip', url: projectUrl },
-    title,
-    url: action === 'deleted' ? info.url || projectUrl : info.url || paneUrl,
+    title: `${kind} w projekcie (element ${item.id})`,
+    url: action === 'deleted' ? projectUrl : paneUrl,
     description: cut(description, 4000),
     color,
     fields,
