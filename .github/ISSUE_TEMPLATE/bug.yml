@@ -1,0 +1,98 @@
+name: Błąd (bug)
+description: Coś działa inaczej, niż powinno.
+title: "bug: "
+labels: ["type:bug"]
+type: Bug
+projects: ["HackYeah-TuttiTripTeam/1"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Tytuł zostaw z prefiksem `bug: ` i dopisz krótki opis, np. `bug(backend): Plan nie uwzględnia godzin otwarcia`.
+        Zgłoszenia bez wymaganych sekcji są automatycznie zamykane.
+  - type: textarea
+    id: description
+    attributes:
+      label: Opis
+      description: Co jest zepsute, w jednym, dwóch zdaniach.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Kroki do odtworzenia
+      placeholder: |
+        1. Wejdź na ...
+        2. Kliknij ...
+        3. Zobacz błąd
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Oczekiwane zachowanie
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Faktyczne zachowanie
+      description: Co się dzieje zamiast tego. Dołącz zrzut ekranu albo log, jeśli masz.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Środowisko
+      description: Gałąź albo URL wdrożenia, urządzenie i przeglądarka.
+      value: |
+        - Gałąź / URL:
+        - Urządzenie / przeglądarka:
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Dlaczego
+      description: Jaki ma wpływ i kogo blokuje.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Kryteria akceptacji
+      description: Sprawdzalna lista. Każdy punkt jako `- [ ]` albo w formie Given/When/Then.
+      placeholder: |
+        - [ ] Given lista wyjazdów, When wybiorę zakres dat, Then widzę tylko wyjazdy z tego zakresu
+        - [ ] Pusty wynik pokazuje komunikat "Brak wyjazdów"
+    validations:
+      required: true
+  - type: textarea
+    id: dod
+    attributes:
+      label: Definition of Done
+      description: Domyślna lista. Usuń punkty, które nie dotyczą zadania, albo dopisz własne.
+      value: |
+        - [ ] Test regresyjny, który bez poprawki nie przechodzi
+        - [ ] CI zielone (lint, typy, testy, testy architektury)
+        - [ ] PR po review (albo self-review) i zmergowany do `develop`
+        - [ ] Poprawka sprawdzona na wdrożeniu develop
+        - [ ] Zaktualizowane docs / AGENTS.md, jeśli trzeba
+        - [ ] UI: sprawdzenie na telefonie
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Obszar
+      description: Której części projektu dotyczy zgłoszenie (można wybrać kilka).
+      multiple: true
+      options:
+        - Frontend
+        - Backend
+        - Worker
+        - Infra
+        - Design
+        - Pitch
+    validations:
+      required: true

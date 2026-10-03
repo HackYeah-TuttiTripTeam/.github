@@ -1,0 +1,226 @@
+name: Issue format
+
+# Reusable check of issue titles and sections for every TuttiTrip repo.
+# Each repo calls it from .github/workflows/issue-format.yml on
+# issues: [opened, edited, reopened].
+#
+# Security: anyone can open an issue in the public repos, so this runs on a
+# GitHub-hosted runner (never the self-hosted ones), reads the title and body
+# only through the API inside github-script (never interpolated into a shell)
+# and needs nothing beyond issues: write.
+
+on:
+  workflow_call:
+
+permissions:
+  issues: write
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    concurrency:
+      group: issue-format-${{ github.repository }}-${{ github.event.issue.number }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const MARKER = '<!-- tuttitrip-issue-format -->';
+            const INVALID = 'invalid-format';
+            const RULES_URL = 'https://github.com/HackYeah-TuttiTripTeam/.github/blob/main/CONTRIBUTING.md';
+            const TITLE_RE = /^(feat|docs|chore|bug)(\([a-z0-9-]+\))?: \S.{3,}/;
+            const KINDS = ['feat', 'docs', 'chore', 'bug'];
+            const ISSUE_TYPES = { feat: 'Feature', bug: 'Bug', docs: 'Task', chore: 'Task' };
+            const TAIL = ['Dlaczego', 'Kryteria akceptacji', 'Definition of Done', 'Obszar'];
+            const SECTIONS = {
+              feat: ['Opis', ...TAIL],
+              docs: ['Opis', ...TAIL],
+              chore: ['Opis', ...TAIL],
+              bug: ['Opis', 'Kroki do odtworzenia', 'Oczekiwane zachowanie',
+                    'Faktyczne zachowanie', 'Środowisko', ...TAIL],
+            };
+            const ALIASES = { 'definition of done': ['dod'], 'obszar': ['area'] };
+            const EXAMPLE_TEXT = {
+              'Opis': 'Lista wyjazdów ma filtr zakresu dat.',
+              'Kroki do odtworzenia': '1. Otwórz listę wyjazdów\n2. Wybierz zakres dat\n3. Lista się nie zmienia',
+              'Oczekiwane zachowanie': 'Widać tylko wyjazdy z wybranego zakresu.',
+              'Faktyczne zachowanie': 'Widać wszystkie wyjazdy.',
+              'Środowisko': '- Gałąź / URL: develop, https://tuttitrip-develop.gburek.app\n- Urządzenie: Android, Chrome',
+              'Dlaczego': 'Organizator z wieloma wyjazdami nie może znaleźć bieżącego.',
+              'Kryteria akceptacji': '- [ ] Given lista wyjazdów, When wybiorę zakres dat, Then widzę tylko wyjazdy z tego zakresu',
+              'Definition of Done': '- [ ] CI zielone\n- [ ] PR zmergowany do `develop`',
+              'Obszar': 'Frontend',
+            };
+            const EXAMPLE_TITLE = {
+              feat: 'feat(frontend): Filtrowanie wyjazdów po dacie',
+              bug: 'bug(frontend): Filtr dat nie zawęża listy wyjazdów',
+              docs: 'docs(backend): Opisać zmienne środowiskowe workera',
+              chore: 'chore(infra): Podbić wersję Node w CI',
+            };
+
+            // Lowercase, drop Polish diacritics and punctuation.
+            const norm = (s) => s.toLowerCase().replace(/ł/g, 'l')
+              .normalize('NFD').replace(/[̀-ͯ]/g, '')
+              .replace(/[^a-z0-9]+/g, ' ').trim();
+
+            // "## Heading" or "### Heading" outside code fences.
+            function parseSections(body) {
+              const sections = [];
+              let current = null;
+              let fence = false;
+              for (const line of body.replace(/\r\n?/g, '\n').split('\n')) {
+                if (/^\s{0,3}(```|~~~)/.test(line)) fence = !fence;
+                const h = fence ? null : /^\s{0,3}#{2,3}\s+(.*?)\s*#*\s*$/.exec(line);
+                if (h) {
+                  current = { heading: norm(h[1]), lines: [] };
+                  sections.push(current);
+                } else if (current) {
+                  current.lines.push(line);
+                }
+              }
+              return sections;
+            }
+
+            // Empty = nothing but comments, "_No response_", "...", "TODO",
+            // "<placeholder>", bare "- [ ]" or "Label:" lines.
+            function isEmpty(lines) {
+              const text = lines.join('\n').replace(/<!--[\s\S]*?-->/g, '');
+              return text.split('\n').every((raw) => {
+                const l = raw.trim()
+                  .replace(/^([-*+]|\d+[.)])\s*/, '')
+                  .replace(/^\[[ xX]?\]\s*/, '')
+                  .trim();
+                return l === ''
+                  || /^_?no response_?$/i.test(l)
+                  || /^(\.\.\.|…|todo|tbd|-|\*)$/i.test(l)
+                  || /^<[^>]*>$/.test(l)
+                  || /^[^:]{1,40}:$/.test(l)
+                  || !/[\p{L}\p{N}]/u.test(l);
+              });
+            }
+
+            function findSection(sections, name) {
+              const names = [norm(name), ...(ALIASES[norm(name)] || [])];
+              const hits = sections.filter((s) =>
+                names.some((n) => s.heading === n || s.heading.startsWith(n + ' ')));
+              if (hits.length === 0) return null;
+              return hits.flatMap((s) => s.lines);
+            }
+
+            function example(kind) {
+              const parts = [`Tytuł: ${EXAMPLE_TITLE[kind]}`, ''];
+              for (const name of SECTIONS[kind]) parts.push(`### ${name}`, EXAMPLE_TEXT[name], '');
+              return parts.join('\n').trim();
+            }
+
+            const { owner, repo } = context.repo;
+            const number = context.payload.issue.number;
+            if (context.payload.issue.user?.type === 'Bot') {
+              core.info('Issue opened by a bot, skipping.');
+              return;
+            }
+            const { data: issue } = await github.rest.issues.get({ owner, repo, issue_number: number });
+            if (issue.pull_request) return;
+            const title = issue.title || '';
+            const body = issue.body || '';
+            const labels = issue.labels.map((l) => (typeof l === 'string' ? l : l.name));
+
+            // Title.
+            const problems = [];
+            const match = TITLE_RE.exec(title);
+            const kind = match ? match[1] : null;
+            const looseKind = kind || (/^\s*\W*(feat|docs|chore|bug)\b/i.exec(title)?.[1] || '').toLowerCase() || null;
+            if (!match) {
+              let hint = '';
+              if (!looseKind) hint = ' Brakuje prefiksu typu.';
+              else if (!/^(feat|docs|chore|bug)/.test(title)) hint = ' Prefiks musi być na początku i małymi literami.';
+              else if (!/^[a-z]+(\([a-z0-9-]+\))?: /.test(title)) hint = ' Po prefiksie (i opcjonalnym zakresie w nawiasie, np. `(frontend)`) musi być dwukropek i spacja.';
+              else hint = ' Po prefiksie brakuje opisu (minimum 4 znaki).';
+              problems.push(`Tytuł \`${title.replace(/`/g, "'")}\` nie ma formatu \`typ: opis\` ani \`typ(zakres): opis\`, gdzie typ to \`feat\`, \`docs\`, \`chore\` albo \`bug\`.${hint}`);
+            }
+
+            // Sections (checked for the type from the title, even a malformed one).
+            if (looseKind && SECTIONS[looseKind]) {
+              const sections = parseSections(body);
+              for (const name of SECTIONS[looseKind]) {
+                const content = findSection(sections, name);
+                if (content === null) problems.push(`Brak sekcji \`### ${name}\`.`);
+                else if (isEmpty(content)) problems.push(`Sekcja \`### ${name}\` jest pusta (albo zawiera tylko placeholder lub \`_No response_\`).`);
+              }
+            } else {
+              problems.push('Nie da się sprawdzić sekcji, bo typ zgłoszenia jest nieznany. Popraw najpierw tytuł.');
+            }
+
+            // Type label: exactly one matching type:* label.
+            if (kind) {
+              const wantedType = `type:${kind}`;
+              for (const l of labels.filter((l) => l.startsWith('type:') && l !== wantedType)) {
+                await github.rest.issues.removeLabel({ owner, repo, issue_number: number, name: l }).catch(() => {});
+              }
+              if (!labels.includes(wantedType)) {
+                await github.rest.issues.addLabels({ owner, repo, issue_number: number, labels: [wantedType] });
+              }
+            }
+
+            // Issue type (forms set it; issues from the API or gh do not).
+            if (kind && !issue.type) {
+              try {
+                await github.rest.issues.update({ owner, repo, issue_number: number, type: ISSUE_TYPES[kind] });
+              } catch (e) {
+                core.warning(`Could not set issue type: ${e.message}`);
+              }
+            }
+
+            // Single bot comment, found by the hidden marker.
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: number, per_page: 100 });
+            const mine = comments.find((c) => c.user?.type === 'Bot' && c.body?.includes(MARKER));
+            async function upsertComment(text) {
+              const bodyText = `${MARKER}\n${text}`;
+              if (mine) await github.rest.issues.updateComment({ owner, repo, comment_id: mine.id, body: bodyText });
+              else await github.rest.issues.createComment({ owner, repo, issue_number: number, body: bodyText });
+            }
+
+            if (problems.length > 0) {
+              core.info(`Invalid issue #${number}:\n- ${problems.join('\n- ')}`);
+              const exampleKind = looseKind && SECTIONS[looseKind] ? looseKind : 'feat';
+              await upsertComment([
+                '### Zgłoszenie nie spełnia formatu',
+                '',
+                'Zgłoszenie zostało automatycznie zamknięte. Popraw tytuł albo opis (Edit). Po zapisaniu zmian zostanie sprawdzone ponownie i otwarte, jeśli wszystko będzie w porządku.',
+                '',
+                '**Co trzeba poprawić:**',
+                '',
+                ...problems.map((p) => `- ${p}`),
+                '',
+                `**Przykład poprawnego zgłoszenia (\`${exampleKind}\`):**`,
+                '',
+                '````markdown',
+                example(exampleKind),
+                '````',
+                '',
+                `Najprościej utworzyć zgłoszenie przez formularz (New issue, potem wybór typu). Zasady: [CONTRIBUTING.md](${RULES_URL}).`,
+              ].join('\n'));
+              if (!labels.includes(INVALID)) {
+                await github.rest.issues.addLabels({ owner, repo, issue_number: number, labels: [INVALID] });
+              }
+              if (issue.state === 'open') {
+                await github.rest.issues.update({ owner, repo, issue_number: number, state: 'closed', state_reason: 'not_planned' });
+              }
+              return;
+            }
+
+            core.info(`Issue #${number} is valid (${kind}).`);
+            const wasInvalid = labels.includes(INVALID);
+            if (wasInvalid) {
+              await github.rest.issues.removeLabel({ owner, repo, issue_number: number, name: INVALID }).catch(() => {});
+              if (issue.state === 'closed') {
+                await github.rest.issues.update({ owner, repo, issue_number: number, state: 'open' });
+              }
+            }
+            if (mine) {
+              await upsertComment(`### Format OK\n\nZgłoszenie spełnia zasady${wasInvalid ? ' i zostało ponownie otwarte' : ''}. Dzięki!`);
+            }

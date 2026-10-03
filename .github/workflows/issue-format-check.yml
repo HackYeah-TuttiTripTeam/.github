@@ -1,0 +1,13 @@
+name: Issue format
+
+# Checks issues of this repo with the shared reusable workflow.
+on:
+  issues:
+    types: [opened, edited, reopened]
+
+permissions:
+  issues: write
+
+jobs:
+  check:
+    uses: ./.github/workflows/issue-format.yml

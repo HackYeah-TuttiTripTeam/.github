@@ -1,0 +1,63 @@
+name: Prace techniczne (chore)
+description: Konfiguracja, CI, zależności, porządki bez zmiany zachowania.
+title: "chore: "
+labels: ["type:chore"]
+type: Task
+projects: ["HackYeah-TuttiTripTeam/1"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Tytuł zostaw z prefiksem `chore: ` i dopisz krótki opis, np. `chore(infra): Podbić wersję Node w CI`.
+        Zgłoszenia bez wymaganych sekcji są automatycznie zamykane.
+  - type: textarea
+    id: description
+    attributes:
+      label: Opis
+      description: Co trzeba zrobić.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Dlaczego
+      description: Po co to robimy i dlaczego teraz.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Kryteria akceptacji
+      description: Sprawdzalna lista. Każdy punkt jako `- [ ]` albo w formie Given/When/Then.
+      placeholder: |
+        - [ ] Given lista wyjazdów, When wybiorę zakres dat, Then widzę tylko wyjazdy z tego zakresu
+        - [ ] Pusty wynik pokazuje komunikat "Brak wyjazdów"
+    validations:
+      required: true
+  - type: textarea
+    id: dod
+    attributes:
+      label: Definition of Done
+      description: Domyślna lista. Usuń punkty, które nie dotyczą zadania, albo dopisz własne.
+      value: |
+        - [ ] CI zielone
+        - [ ] PR po review (albo self-review) i zmergowany do `develop`
+        - [ ] Działa na wdrożeniu develop, jeśli dotyczy
+        - [ ] Zaktualizowane docs / AGENTS.md, jeśli trzeba
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Obszar
+      description: Której części projektu dotyczy zgłoszenie (można wybrać kilka).
+      multiple: true
+      options:
+        - Frontend
+        - Backend
+        - Worker
+        - Infra
+        - Design
+        - Pitch
+    validations:
+      required: true
