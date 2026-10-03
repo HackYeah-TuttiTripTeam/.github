@@ -1,0 +1,15 @@
+name: Delete merged branch
+
+# Deletes the head branch of a merged PR in this repo with the shared reusable
+# workflow (main and develop are never deleted).
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  delete:
+    uses: ./.github/workflows/delete-merged-branch.yml

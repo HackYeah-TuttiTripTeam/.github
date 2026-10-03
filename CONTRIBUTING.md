@@ -51,6 +51,7 @@ Workflow `PR format` sprawdza tytuł i to, czy sekcje Co i dlaczego, Lista zmian
 3. PR do `develop` mergujemy przez "Squash and merge". Tytuł PR staje się wtedy jedynym commitem na `develop`.
 4. Wydanie to PR z `develop` do `main`, mergowany przez "Create a merge commit", żeby historia `main` zawierała commity z `develop`. `main` to produkcja.
 5. Nie pushujemy bezpośrednio do `main` ani `develop` i nie robimy force-push.
+6. Po merge'u gałąź roboczą usuwa workflow `Delete merged branch`, a razem z nią znika jej podgląd. `main` i `develop` nie są nigdy usuwane, więc PR wydania idzie prosto z `develop`. Gałąź zostaje, jeśli PR zamknięto bez merge'a albo jeśli jest bazą innego otwartego PR. Ustawienie "Automatically delete head branches" jest wyłączone, bo bez ochrony gałęzi kasowało `develop` po każdym wydaniu.
 
 Repozytoria mają włączone tylko dwie metody: "Squash and merge" (tytuł commita to zawsze tytuł PR) i "Create a merge commit". GitHub pozwala ustawić metody tylko dla całego repozytorium, nie dla gałęzi, więc wybór metody to zasada zespołu. Repozytorium zbiorcze `tuttitrip` ma tylko `main`, więc jego PR idą prosto do `main` przez "Squash and merge". Każda gałąź dostaje własny podgląd frontendu i API. Szczegóły są w `AGENTS.md` każdego repozytorium.
 
