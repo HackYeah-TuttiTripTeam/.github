@@ -4,8 +4,9 @@
 // closed / merged issues and PRs. Workflow runs are not handled here (GitHub
 // Actions posts them itself, see .github/workflows/discord-notify.yml).
 //
-// Secrets: DISCORD_WEBHOOK_URL, GITHUB_WEBHOOK_SECRET, optional GITHUB_TOKEN
-// (fine-grained PAT, read-only: titles and current Status of project items).
+// Secrets: DISCORD_WEBHOOK_URL, GITHUB_WEBHOOK_SECRET. No GitHub token: messages
+// use only what the webhook payload carries (a project item event has no title,
+// so the message links to the item in the project).
 import {
   issueMessage,
   projectItemMessage,
@@ -40,59 +41,6 @@ export async function verifySignature(secret, body, header) {
   return crypto.subtle.verify('HMAC', key, signature, body)
 }
 
-const ITEM_QUERY = `query($ids: [ID!]!) {
-  nodes(ids: $ids) {
-    __typename
-    ... on ProjectV2Item {
-      fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
-    }
-    ... on DraftIssue { title }
-    ... on Issue { title number url repository { name } }
-    ... on PullRequest { title number url repository { name } }
-  }
-}`
-
-/** Title, link and current Status of a project item. Empty without a token or on any error. */
-async function itemInfo(env, item) {
-  if (!env.GITHUB_TOKEN) return {}
-  try {
-    const res = await fetch('https://api.github.com/graphql', {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${env.GITHUB_TOKEN}`,
-        'content-type': 'application/json',
-        'user-agent': 'tuttitrip-discord-relay',
-      },
-      body: JSON.stringify({
-        query: ITEM_QUERY,
-        variables: { ids: [item.node_id, item.content_node_id].filter(Boolean) },
-      }),
-      signal: AbortSignal.timeout(5000),
-    })
-    if (!res.ok) {
-      console.log(JSON.stringify({ graphql: res.status }))
-      return {}
-    }
-    // Deleted items/drafts come back as null nodes with NOT_FOUND errors.
-    const nodes = (await res.json()).data?.nodes ?? []
-    const info = {}
-    for (const node of nodes) {
-      if (!node) continue
-      if (node.__typename === 'ProjectV2Item') info.status = node.fieldValueByName?.name
-      else {
-        info.title = node.title
-        info.number = node.number
-        info.url = node.url
-        info.repo = node.repository?.name
-      }
-    }
-    return info
-  } catch (e) {
-    console.log(JSON.stringify({ graphql: e.name }))
-    return {}
-  }
-}
-
 async function postToDiscord(env, message) {
   const post = () =>
     fetch(env.DISCORD_WEBHOOK_URL, {
@@ -118,7 +66,7 @@ async function buildMessage(event, payload, env) {
       const item = payload.projects_v2_item
       if (!anyProject && item.project_node_id !== env.PROJECT_NODE_ID) return { skip: 'other project' }
       if (payload.action === 'reordered') return { skip: 'reordered' }
-      return projectItemMessage(payload, env, await itemInfo(env, item))
+      return projectItemMessage(payload, env)
     }
     case 'projects_v2':
       if (!anyProject && payload.projects_v2?.node_id !== env.PROJECT_NODE_ID) return { skip: 'other project' }
