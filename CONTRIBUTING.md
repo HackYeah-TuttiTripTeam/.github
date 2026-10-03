@@ -52,7 +52,7 @@ Workflow `PR format` sprawdza tytuł i to, czy sekcje Co i dlaczego, Lista zmian
 4. Wydanie to PR z `develop` do `main`, mergowany przez "Create a merge commit", żeby historia `main` zawierała commity z `develop`. `main` to produkcja.
 5. Nie pushujemy bezpośrednio do `main` ani `develop` i nie robimy force-push.
 
-GitHub pozwala w ustawieniach repozytorium włączyć metody merge tylko dla całego repozytorium, nie dla gałęzi, więc wybór metody to zasada zespołu. Każda gałąź dostaje własny podgląd frontendu i API. Szczegóły są w `AGENTS.md` każdego repozytorium.
+Repozytoria mają włączone tylko dwie metody: "Squash and merge" (tytuł commita to zawsze tytuł PR) i "Create a merge commit". GitHub pozwala ustawić metody tylko dla całego repozytorium, nie dla gałęzi, więc wybór metody to zasada zespołu. Repozytorium zbiorcze `tuttitrip` ma tylko `main`, więc jego PR idą prosto do `main` przez "Squash and merge". Każda gałąź dostaje własny podgląd frontendu i API. Szczegóły są w `AGENTS.md` każdego repozytorium.
 
 ## Wydania i notatki
 

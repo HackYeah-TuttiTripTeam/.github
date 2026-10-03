@@ -115,7 +115,8 @@ jobs:
                 problems.push('Prefiks `release:` jest zarezerwowany dla PR wydania z `develop` do `main`. Użyj `feat:`, `docs:`, `chore:` albo `bugfix:`.');
               } else if (/^bug(\([a-z0-9-]+\))?:/.test(title)) {
                 const fixed = title.replace(/^bug/, 'bugfix').replace(/`/g, "'");
-                problems.push(`W tytule PR poprawka ma prefiks \`bugfix:\`, a nie \`bug:\` (\`bug:\` jest tylko dla zgłoszeń). Zmień tytuł na \`${fixed}\`.`);
+                const tooShort = TITLE_RE.test(fixed) ? '' : ' Opis po dwukropku musi mieć co najmniej 4 znaki.';
+                problems.push(`W tytule PR poprawka ma prefiks \`bugfix:\`, a nie \`bug:\` (\`bug:\` jest tylko dla zgłoszeń). Zmień tytuł na \`${fixed}\`.${tooShort}`);
               } else {
                 let hint = '';
                 if (!/^\s*\W*(feat|docs|chore|bugfix|bug)\b/i.test(title)) hint = ' Brakuje prefiksu typu.';

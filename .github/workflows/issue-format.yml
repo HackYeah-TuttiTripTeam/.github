@@ -128,6 +128,12 @@ jobs:
             const title = issue.title || '';
             const body = issue.body || '';
             const labels = issue.labels.map((l) => (typeof l === 'string' ? l : l.name));
+            // Issues closed by people (done, duplicate) are left alone; only
+            // the ones this check closed are re-checked after an edit.
+            if (issue.state === 'closed' && !labels.includes(INVALID)) {
+              core.info(`Issue #${number} is closed and was not closed by this check, skipping.`);
+              return;
+            }
 
             // Title.
             const problems = [];
@@ -217,7 +223,7 @@ jobs:
             const wasInvalid = labels.includes(INVALID);
             if (wasInvalid) {
               await github.rest.issues.removeLabel({ owner, repo, issue_number: number, name: INVALID }).catch(() => {});
-              if (issue.state === 'closed') {
+              if (issue.state === 'closed' && issue.state_reason === 'not_planned') {
                 await github.rest.issues.update({ owner, repo, issue_number: number, state: 'open' });
               }
             }
