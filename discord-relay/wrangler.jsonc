@@ -1,0 +1,29 @@
+// tuttitrip-discord-relay: GitHub org webhook (Projects v2, issues, PRs) -> Discord.
+// Deploy and secrets: see README.md in this folder.
+{
+  "$schema": "https://unpkg.com/wrangler@4.147.0/config-schema.json",
+  "name": "tuttitrip-discord-relay",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-01",
+  // workers.dev sits behind Cloudflare Access on this account, so GitHub could
+  // not reach it. The Worker answers only on its Custom Domain.
+  "workers_dev": false,
+  "preview_urls": false,
+  // Attached the first time with override_existing_dns_record: false (never
+  // takes over someone else's record); later deploys keep it.
+  "routes": [{ "pattern": "tuttitrip-hooks.gburek.app", "custom_domain": true }],
+  "observability": { "enabled": true, "head_sampling_rate": 1 },
+  "vars": {
+    "GITHUB_ORG": "HackYeah-TuttiTripTeam",
+    // GitHub Project #1 "TuttiTrip". Empty = every project of the org.
+    "PROJECT_NODE_ID": "PVT_kwDOFBpBWc4Bljep",
+    "PROJECT_URL": "https://github.com/orgs/HackYeah-TuttiTripTeam/projects/1",
+    // Comma-separated field names to post (e.g. "Status,Area,Priority").
+    // Empty = every custom field (single select, iteration, number, date, text).
+    "PROJECT_FIELDS": "",
+    // Also post opened/closed/merged issues and PRs (needs those events on the org webhook).
+    "FORWARD_ISSUES_PRS": "true"
+  }
+  // Secrets (wrangler secret put): DISCORD_WEBHOOK_URL, GITHUB_WEBHOOK_SECRET,
+  // optional GITHUB_TOKEN (fine-grained PAT, read-only, for item titles).
+}

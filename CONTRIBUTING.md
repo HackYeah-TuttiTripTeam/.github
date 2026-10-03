@@ -63,3 +63,35 @@ Notatki wydania powstają same w GitHub Releases (bez pliku CHANGELOG):
 - Po każdym merge'u do `develop` Release Drafter aktualizuje szkic następnego wydania. Zmiany są pogrupowane: 🚀 Nowe funkcje, 🐛 Poprawki, 📚 Dokumentacja, 🧹 Porządki.
 - Merge PR wydania z `develop` do `main` publikuje ten szkic i zakłada tag na `main`. Sam PR wydania nie trafia do listy zmian.
 - Numer wersji: `feat` podnosi wersję minor, pozostałe typy patch. Pierwsze wydanie to `v0.1.0`.
+
+## Powiadomienia (Discord)
+
+Na kanał zespołu trafiają dwa rodzaje wiadomości:
+
+1. **Wyniki workflow** z repozytoriów `tuttitrip`, `tuttitrip-frontend`, `tuttitrip-backend` i `tuttitrip-worker`. Każde ma `.github/workflows/discord-notify.yml`, który na `workflow_run: completed` woła wspólny `discord-notify.yml` z tego repozytorium. Wiadomość ma repozytorium, workflow, gałąź, zdarzenie, autora, numer uruchomienia, PR, link do uruchomienia i adres wdrożenia (frontend i backend). Kolor: zielony sukces, czerwony błąd, szary anulowanie.
+2. **Zmiany w projekcie #1 "TuttiTrip"**: dodanie elementu, zmiana Status, Area, Priority i innych pól (stara i nowa wartość), archiwizacja, usunięcie. Do tego nowe, zamknięte i scalone issue oraz PR. Wysyła je Worker `tuttitrip-discord-relay` (katalog [`discord-relay/`](discord-relay/README.md)) z webhooka organizacji, bo GitHub Actions nie widzi zmian w projektach.
+
+Zasady szumu:
+
+- Uruchomienia zakończone `skipped` nie są wysyłane.
+- `Issue format`, `PR format`, `Delete merged branch`, `Release notes` i workflow sprzątające podglądy piszą tylko wtedy, gdy się nie udały.
+- Sukces na `main` i `develop` to pełna wiadomość z adresem wdrożenia. Sukces na innej gałęzi i każde anulowanie (np. przez nowszy push) to jedna krótka linia.
+- Błąd, przekroczony czas i "wymaga akcji" to zawsze pełna wiadomość z listą nieudanych jobów.
+- W projekcie pomijane są zmiany kolejności, etykiet i przypisań. Akcje botów na issue i PR (np. automatyczne zamknięcie złego zgłoszenia) też.
+
+Konfiguracja:
+
+- Lista obserwowanych workflow jest w `discord-notify.yml` każdego repozytorium (`workflows:`). Nowy workflow trzeba tam dopisać po nazwie (pole `name:`), na `main` i `develop`. `workflow_run` działa tylko z kopii na `main`.
+- Webhook Discorda to sekret repozytorium `DISCORD_WEBHOOK_URL` w każdym z czterech repozytoriów. Sekret organizacji nie wystarczy: na darmowym planie nie widzą go repozytoria prywatne.
+- Worker: `discord-relay/wrangler.jsonc` (projekt, pola, przekazywanie issue i PR), sekrety `DISCORD_WEBHOOK_URL`, `GITHUB_WEBHOOK_SECRET` i opcjonalny `GITHUB_TOKEN`. Webhook organizacji wskazuje na `https://tuttitrip-hooks.gburek.app/github`.
+
+Zmiana (rotacja) webhooka Discorda: utwórz nowy webhook w ustawieniach kanału i usuń stary, potem z pliku z nowym URL-em:
+
+```bash
+for r in tuttitrip tuttitrip-frontend tuttitrip-backend tuttitrip-worker; do
+  gh secret set DISCORD_WEBHOOK_URL -R HackYeah-TuttiTripTeam/$r < discord-webhook.url
+done
+cd discord-relay && npx wrangler@4.147.0 secret put DISCORD_WEBHOOK_URL < ../discord-webhook.url
+```
+
+Nie wklejaj URL-a webhooka do issue, PR, logów ani na czat. Kto go zna, może pisać na kanale.
