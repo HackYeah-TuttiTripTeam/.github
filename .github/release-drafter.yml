@@ -15,6 +15,12 @@ template: |
 
   **Pełna lista zmian:** https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...$RESOLVED_TAG
 
+# The first release has no previous tag, so the compare link would be
+# ".../compare/...v0.1.0". Point it at the commit history of the tag instead.
+replacers:
+  - search: '/\/compare\/\.\.\.v/g'
+    replace: '/commits/v'
+
 categories:
   - type: 'pre-exclude'
     when:
