@@ -22,7 +22,7 @@ name: Delete merged branch
 # actions: write when `cleanup-workflow` is set.
 #
 # Security: runs on pull_request (never pull_request_target), on a
-# GitHub-hosted runner, checks out no code and reads the branch name only from
+# the org's self-hosted runners, checks out no code and reads the branch name only from
 # context.payload inside github-script (never interpolated into a shell).
 
 on:
@@ -38,7 +38,7 @@ jobs:
   delete:
     name: delete
     if: github.event.pull_request.merged == true
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, hackathon]
     timeout-minutes: 5
     steps:
       - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0

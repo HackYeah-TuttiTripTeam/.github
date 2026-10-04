@@ -12,7 +12,7 @@ name: Release notes
 # - Until the first release exists, notes start at the repo's first commit
 #   and the version is v0.1.0.
 #
-# Runs on GitHub-hosted runners only and checks out no code.
+# Runs on the org's self-hosted runners and checks out no code.
 
 on:
   workflow_call:
@@ -24,7 +24,7 @@ jobs:
   autolabel:
     name: autolabel
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, hackathon]
     timeout-minutes: 5
     permissions:
       contents: read
@@ -37,7 +37,7 @@ jobs:
   draft:
     name: draft
     if: github.event_name == 'push' && (github.ref_name == 'develop' || github.ref_name == 'main')
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, hackathon]
     timeout-minutes: 5
     permissions:
       contents: write

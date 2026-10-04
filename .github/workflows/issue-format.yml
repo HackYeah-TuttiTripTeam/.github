@@ -4,10 +4,11 @@ name: Issue format
 # Each repo calls it from .github/workflows/issue-format.yml on
 # issues: [opened, edited, reopened].
 #
-# Security: anyone can open an issue in the public repos, so this runs on a
-# GitHub-hosted runner (never the self-hosted ones), reads the title and body
-# only through the API inside github-script (never interpolated into a shell)
-# and needs nothing beyond issues: write.
+# Security: runs on the org's self-hosted runners (team decision: no
+# GitHub-hosted minutes). Anyone can open an issue in the public repos, so the
+# job checks out no code, reads the title and body only through the API inside
+# github-script (never interpolated into a shell) and needs nothing beyond
+# issues: write.
 
 on:
   workflow_call:
@@ -18,7 +19,7 @@ permissions:
 jobs:
   check:
     name: check
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, hackathon]
     timeout-minutes: 5
     permissions:
       issues: write

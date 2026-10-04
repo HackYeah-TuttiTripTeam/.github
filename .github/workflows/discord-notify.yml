@@ -16,7 +16,7 @@ name: Discord notify
 # - failure, timeout, startup failure, action required: full embed plus the
 #   failed jobs.
 #
-# Security: GitHub-hosted runner, no checkout, no shell. Event fields (titles,
+# Security: org self-hosted runner, no checkout, no shell. Event fields (titles,
 # branch names) are read from context.payload inside github-script and escaped
 # for Discord markdown; mentions are disabled. The webhook URL comes only from
 # the DISCORD_WEBHOOK_URL secret, which the caller passes explicitly, and it is
@@ -65,7 +65,7 @@ jobs:
       github.event.workflow_run.conclusion != 'cancelled' &&
       !(github.event.workflow_run.conclusion == 'success' &&
         contains(fromJSON(inputs.quiet-on-success), github.event.workflow_run.name))
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, hackathon]
     timeout-minutes: 5
     permissions:
       actions: read

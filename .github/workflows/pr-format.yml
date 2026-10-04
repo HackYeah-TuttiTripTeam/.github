@@ -5,8 +5,10 @@ name: PR format
 # pull_request: [opened, edited, synchronize, reopened, ready_for_review].
 #
 # Security: runs on pull_request (never pull_request_target), on a
-# GitHub-hosted runner, checks out no code and reads the title and body only
-# through the API inside github-script (never interpolated into a shell).
+# the org's self-hosted runners, checks out no code and reads the title and
+# body only through the API inside github-script (never interpolated into a
+# shell). Pull requests from forks are skipped, so nobody outside the org gets
+# a job on those runners.
 #
 # A red check does not block merging on the free plan (no branch protection).
 
@@ -19,7 +21,8 @@ permissions:
 jobs:
   check:
     name: check
-    runs-on: ubuntu-latest
+    if: ${{ !github.event.pull_request.head.repo.fork }}
+    runs-on: [self-hosted, hackathon]
     timeout-minutes: 5
     permissions:
       pull-requests: write
